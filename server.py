@@ -20,6 +20,28 @@ except ImportError:
         logging.error(f"Lỗi khi tự động cài đặt 'websockets': {e}")
         raise e
 
+# Monkey patch websockets to support HTTP HEAD requests from Render (which typically raise ValueError in websockets library)
+try:
+    import websockets.http11
+    original_parse = websockets.http11.Request.parse
+
+    @classmethod
+    def patched_parse(cls, read_line):
+        is_first_line = [True]
+        def read_line_wrapper(*args, **kwargs):
+            line = yield from read_line(*args, **kwargs)
+            if is_first_line[0]:
+                is_first_line[0] = False
+                if line.startswith(b"HEAD "):
+                    line = line.replace(b"HEAD ", b"GET ", 1)
+            return line
+        return (yield from original_parse(read_line_wrapper))
+
+    websockets.http11.Request.parse = patched_parse
+    logging.info("Monkey-patched websockets.http11 to support HTTP HEAD requests successfully.")
+except Exception as e:
+    logging.warning(f"Could not monkey-patch websockets.http11: {e}")
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Port to run on (reads from environment variables for cloud platforms like Render)
@@ -409,10 +431,31 @@ async def handler(websocket, path=None):
         if room_code and room_code in rooms:
             await handle_disconnect_by_id(room_code, client_id)
 
-def health_check(path, request_headers):
+def health_check(*args, **kwargs):
     # Trả về HTTP 200 OK cho các yêu cầu HTTP thường (để Render Health Check thành công)
-    if "upgrade" not in request_headers.get("Upgrade", "").lower():
-        return http.HTTPStatus.OK, [("Content-Type", "text/plain")], b"OK"
+    # Hỗ trợ động cả websockets bản cũ (path, request_headers) và bản mới (connection, request)
+    if len(args) >= 2:
+        req_or_headers = args[1]
+        if hasattr(req_or_headers, "headers"):
+            headers = req_or_headers.headers
+        else:
+            headers = req_or_headers
+    else:
+        return None
+        
+    if "upgrade" not in headers.get("Upgrade", "").lower():
+        # Hỗ trợ trả về Response object cho websockets bản mới (v11+) hoặc tuple cho các bản cũ
+        try:
+            import websockets.http11
+            import websockets.datastructures
+            return websockets.http11.Response(
+                status_code=200,
+                reason_phrase="OK",
+                headers=websockets.datastructures.Headers([("Content-Type", "text/plain")]),
+                body=b"OK"
+            )
+        except Exception:
+            return http.HTTPStatus.OK, [("Content-Type", "text/plain")], b"OK"
     return None
 
 async def main():
