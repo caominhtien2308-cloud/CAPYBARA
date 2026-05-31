@@ -4,6 +4,21 @@ import random
 import logging
 import os
 import http
+import sys
+import subprocess
+
+# Tự động cài đặt thư viện 'websockets' nếu môi trường chưa có sẵn (đề phòng lỗi Render Build)
+try:
+    import websockets
+except ImportError:
+    logging.warning("Không tìm thấy thư viện 'websockets'. Đang tiến hành tự động cài đặt...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "websockets"])
+        import websockets
+        logging.info("Tự động cài đặt 'websockets' thành công!")
+    except Exception as e:
+        logging.error(f"Lỗi khi tự động cài đặt 'websockets': {e}")
+        raise e
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -405,7 +420,7 @@ async def main():
     # Import inside main to handle older python versions or different runtimes gracefully if needed
     import websockets
     async with websockets.serve(handler, "0.0.0.0", PORT, process_request=health_check):
-        await asyncio.Future()  # keep running forever
+        await asyncio.Event().wait()  # keep running forever
 
 if __name__ == "__main__":
     try:
