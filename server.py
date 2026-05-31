@@ -45,8 +45,10 @@ try:
 except Exception as e:
     logging.warning(f"Could not monkey-patch websockets.http11: {e}")
 
-# Port to run on (reads from environment variables, falls back to 8765)
+# Port to run on (reads from environment variables, forces 10000 on Render cloud for routing sync)
 PORT = int(os.environ.get("PORT", 8765))
+if os.environ.get("RENDER"):
+    PORT = 10000
 
 # Room structure:
 # rooms = {
