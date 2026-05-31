@@ -7,6 +7,9 @@ import http
 import sys
 import subprocess
 
+# Cấu hình logging ngay từ đầu để đảm bảo tất cả INFO logs được in ra lập tức
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 # Tự động cài đặt thư viện 'websockets' nếu môi trường chưa có sẵn (đề phòng lỗi Render Build)
 try:
     import websockets
@@ -41,8 +44,6 @@ try:
     logging.info("Monkey-patched websockets.http11 to support HTTP HEAD requests successfully.")
 except Exception as e:
     logging.warning(f"Could not monkey-patch websockets.http11: {e}")
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Port to run on (reads from environment variables for cloud platforms like Render)
 PORT = int(os.environ.get("PORT", 8765))
@@ -460,10 +461,21 @@ def health_check(*args, **kwargs):
 
 async def main():
     logging.info(f"Starting CapyBrawl WebSocket Server on port {PORT}...")
-    # Import inside main to handle older python versions or different runtimes gracefully if needed
     import websockets
-    async with websockets.serve(handler, "0.0.0.0", PORT, process_request=health_check):
-        await asyncio.Event().wait()  # keep running forever
+    
+    # Cài đặt máy chủ chính trên cổng PORT do Render cấu hình
+    server1 = await websockets.serve(handler, "0.0.0.0", PORT, process_request=health_check)
+    
+    # Cài đặt máy chủ dự phòng trên cổng 10000 (Đề phòng trường hợp Render định tuyến cứng cổng 10000)
+    if PORT != 10000:
+        try:
+            logging.info("Starting backup CapyBrawl WebSocket Server on port 10000...")
+            server2 = await websockets.serve(handler, "0.0.0.0", 10000, process_request=health_check)
+            logging.info("Backup server on port 10000 successfully bound and listening!")
+        except Exception as e:
+            logging.warning(f"Could not bind to backup port 10000: {e}")
+            
+    await asyncio.Event().wait()  # keep running forever
 
 if __name__ == "__main__":
     try:
