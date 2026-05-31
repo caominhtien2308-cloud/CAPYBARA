@@ -5429,7 +5429,8 @@
         SERVER_URL = host.replace('https://', 'wss://');
       } else {
         let protocol = 'ws://';
-        if (window.location.protocol === 'https:') {
+        // Tự động dùng wss:// cho máy chủ online (Render, Pinggy,...) kể cả khi mở file HTML từ máy cục bộ (file://)
+        if (window.location.protocol === 'https:' || (host && !host.startsWith('localhost') && !host.startsWith('127.0.0.1') && host.includes('.'))) {
           protocol = 'wss://';
         }
         
