@@ -3,6 +3,7 @@ import json
 import random
 import logging
 import os
+import http
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -393,11 +394,17 @@ async def handler(websocket, path=None):
         if room_code and room_code in rooms:
             await handle_disconnect_by_id(room_code, client_id)
 
+def health_check(path, request_headers):
+    # Trả về HTTP 200 OK cho các yêu cầu HTTP thường (để Render Health Check thành công)
+    if "upgrade" not in request_headers.get("Upgrade", "").lower():
+        return http.HTTPStatus.OK, [("Content-Type", "text/plain")], b"OK"
+    return None
+
 async def main():
-    logging.info(f"Starting CapyBrawl WebSocket Server on ws://localhost:{PORT}...")
+    logging.info(f"Starting CapyBrawl WebSocket Server on port {PORT}...")
     # Import inside main to handle older python versions or different runtimes gracefully if needed
     import websockets
-    async with websockets.serve(handler, "0.0.0.0", PORT):
+    async with websockets.serve(handler, "0.0.0.0", PORT, process_request=health_check):
         await asyncio.Future()  # keep running forever
 
 if __name__ == "__main__":
